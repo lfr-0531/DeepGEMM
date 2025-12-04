@@ -182,6 +182,7 @@ static void smxx_fp8_paged_mqa_logits(const torch::Tensor& q,
     const int mma_m = (device_runtime->get_arch_major() == 10 ? 128 : 64);
     const int num_math_warp_groups = split_kv / mma_m;
     const int num_math_threads = num_math_warp_groups * 128;
+    const int compute_block_kv = 64;
     const int num_q_stages = 3, num_kv_stages = (device_runtime->get_arch_major() == 10 ? 4 : 3);
     DG_HOST_ASSERT(split_kv % mma_m == 0 and logits_stride % split_kv == 0);
 
@@ -211,8 +212,8 @@ static void smxx_fp8_paged_mqa_logits(const torch::Tensor& q,
         const int aligned_smem_weight_size_per_stage = align(next_n_per_cta * num_heads * static_cast<int>(weights.element_size()), swizzle_alignment);
         const int smem_q_pipe_size = num_q_stages * (smem_q_size_per_stage + aligned_smem_weight_size_per_stage) + align(num_q_stages * 8 * 2, swizzle_alignment);
 
-        const int smem_kv_size_per_stage = block_kv * head_dim * static_cast<int>(kv_cache.element_size());
-        const int aligned_smem_kv_scale_size_per_stage = align(block_kv * static_cast<int>(kv_cache_scales.element_size()), swizzle_alignment);
+        const int smem_kv_size_per_stage = compute_block_kv * head_dim * static_cast<int>(kv_cache.element_size());
+        const int aligned_smem_kv_scale_size_per_stage = align(compute_block_kv * static_cast<int>(kv_cache_scales.element_size()), swizzle_alignment);
         const int smem_kv_pipe_size = num_kv_stages * (smem_kv_size_per_stage + aligned_smem_kv_scale_size_per_stage) + align(num_kv_stages * 8 * 2, swizzle_alignment);
 
         // Allocate some shared memory for UMMA barriers and tensor memory pointer, although it is not used in SM90

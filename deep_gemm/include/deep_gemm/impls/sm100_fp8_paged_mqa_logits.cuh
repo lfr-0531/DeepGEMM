@@ -40,6 +40,7 @@ void sm100_fp8_paged_mqa_logits(const uint32_t batch_size,
     const auto& warp_idx = __shfl_sync(0xffffffff, threadIdx.x / 32, 0);
     const auto& warpgroup_idx = warp_idx / 4;
     const auto& lane_idx = get_lane_idx();
+    constexpr uint32_t kComputeBlockKV = 64;
 
     // Prefetch TMA descriptors
     DG_STATIC_ASSERT(kNumSpecializedThreads == 128 and kNumMathThreads % 128 == 0, "Invalid threads");
@@ -174,7 +175,12 @@ void sm100_fp8_paged_mqa_logits(const uint32_t batch_size,
             issue_tma_q(0, next_q_idx), q_iter_idx = 1;
 
         int kv_block_idx_ptr = 32;
-        uint32_t kv_block_idx_storage;
+
+        constexpr uint32_t kNumBlocksPerMMA = kComputeBlockKV / BLOCK_KV;
+        DG_STATIC_ASSERT(kComputeBlockKV % BLOCK_KV == 0, "kComputeBlockKV must be a multiple of BLOCK_KV");
+        DG_STATIC_ASSERT(kNumBlocksPerMMA <= 2, "Invalid BLOCK_KV");
+        using idx_storage_t = std::conditional_t<kNumBlocksPerMMA == 1, uint32_t, unsigned long long>;
+        idx_storage_t kv_block_idx_storage;
 
         while (fetched_next_task) {
             // Prefetch next Q when current Q changes
