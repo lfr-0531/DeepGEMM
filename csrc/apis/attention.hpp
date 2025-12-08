@@ -136,9 +136,9 @@ static torch::Tensor fp8_mqa_logits(const torch::Tensor& q,
     return logits;
 }
 
-static torch::Tensor get_paged_mqa_logits_metadata(const torch::Tensor& context_lens, int num_sms) {
+static torch::Tensor get_paged_mqa_logits_metadata(const torch::Tensor& context_lens, [[maybe_unused]] int block_kv, int num_sms) {
     const bool is_context_lens_2d = context_lens.dim() == 2;
-    const int compute_block_kv = 64;
+    const int compute_block_kv = device_runtime->get_arch_major() == 10 ? 128 : 64;
     int batch_size = 0, next_n = 0;
     if (is_context_lens_2d) {
         batch_size = context_lens.size(0);
@@ -200,12 +200,10 @@ static torch::Tensor fp8_paged_mqa_logits(const torch::Tensor& q,
     DG_HOST_ASSERT(num_sms % num_kv_multicast == 0);
     DG_HOST_ASSERT(schedule_meta_size == num_clusters + 1 and meta_info_size == 2);
 
-    const int compute_block_kv = 64;
+    const int compute_block_kv = arch_major == 10 ? 128 : 64;
 
     DG_HOST_ASSERT(next_n == 1 or next_n == 2 or next_n == 4);
-    // SM90 does not support next_n == 4 for now
-    DG_HOST_ASSERT(!(arch_major == 9 and next_n == 4));
-    DG_HOST_ASSERT(compute_block_kv % block_kv == 0 and compute_block_kv / block_kv <= 2);
+    DG_HOST_ASSERT(compute_block_kv % block_kv == 0 and compute_block_kv / block_kv <= 4);
 
     DG_HOST_ASSERT(q.is_contiguous());
     DG_HOST_ASSERT(kv_cache_stride_bytes % sizeof(float) == 0);
@@ -276,7 +274,7 @@ static void register_apis(pybind11::module_& m) {
           py::arg("clean_logits") = true,
           py::arg("max_seqlen_k") = 0);
     m.def("get_paged_mqa_logits_metadata", &get_paged_mqa_logits_metadata,
-          py::arg("context_lens"), py::arg("num_sms"));
+          py::arg("context_lens"), py::arg("block_kv"), py::arg("num_sms"));
     m.def("fp8_paged_mqa_logits", &fp8_paged_mqa_logits,
           py::arg("q"), py::arg("kv_cache"), py::arg("weights"),
           py::arg("context_lens"), py::arg("block_table"), py::arg("schedule_meta"),
