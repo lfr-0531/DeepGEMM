@@ -1,14 +1,12 @@
-import dataclasses
 import random
 import torch
-from typing import Tuple, List
+from typing import Tuple
 
 import deep_gemm
 from deep_gemm.testing import (
     bench_kineto,
     calc_diff, count_bytes,
-    ignore_env, get_arch_major,
-    test_filter
+    ignore_env, get_arch_major
 )
 from deep_gemm.utils import ceil_div, per_custom_dims_cast_to_fp8
 
@@ -267,7 +265,7 @@ def test_paged_mqa_logits():
                         else:
                             t, clean_t = bench_kineto(lambda: deep_gemm.fp8_paged_mqa_logits(q_fp8, kv_cache_fp8, weights, context_lens, block_tables, schedule_metadata, max_model_len, clean_logits=True),
                                                     ('fp8_paged_mqa_logits', 'clean_logits'))
-                            clean_bytes = (batch_size * next_n * max_model_len - neginf_mask.sum().item()) * 4 + count_bytes(context_lens)
+                        clean_bytes = (batch_size * next_n * max_model_len - neginf_mask.sum().item()) * 4 + count_bytes(context_lens)
                         print(f' > BSZ={batch_size:3}, NextN={next_n:1}, H={heads:2}, D={index_dim:2}, L={avg_kv:6}, BLKSZ={blocksize:2}: '
                             f'{tflops / t:4.0f} TFLOPS, {t * 1e6:3.0f} us, '
                             f'{(input_bytes + output_bytes) / t / 1e9:4.0f} GB/s', end='')

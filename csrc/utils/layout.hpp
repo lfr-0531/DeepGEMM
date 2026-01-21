@@ -36,7 +36,6 @@ static bool fp8_requires_k_major() {
 // Tensor utils
 template <int N>
 static auto get_shape(const torch::Tensor& t) {
-    DG_HOST_ASSERT(t.dim() == N);
     return [&t] <size_t... Is> (std::index_sequence<Is...>) {
         return std::make_tuple(static_cast<int>(t.sizes()[Is])...);
     }(std::make_index_sequence<N>());

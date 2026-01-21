@@ -237,8 +237,8 @@ static torch::Tensor fp8_paged_mqa_logits(const torch::Tensor& q,
     );
 
     // Allocate output
-    constexpr int split_kv = 256;
-    const auto& aligned_max_context_len = align(max_context_len, split_kv);
+    const int num_math_warp_groups = arch_major == 10 ? 2 : 4;
+    const auto& aligned_max_context_len = align(max_context_len, num_math_warp_groups * compute_block_kv);
     auto logits = torch::empty({batch_size * next_n, aligned_max_context_len}, q.options().dtype(torch::kFloat));
     logits = logits.slice(-1, 0, max_context_len);
 
@@ -246,7 +246,7 @@ static torch::Tensor fp8_paged_mqa_logits(const torch::Tensor& q,
     if (arch_major == 9 or arch_major == 10) {
         smxx_fp8_paged_mqa_logits(q, kv_cache, kv_cache_scales, weights, context_lens, logits, block_table, schedule_meta,
                                   batch_size, next_n, num_heads, head_dim, num_kv_blocks, block_kv, is_context_lens_2d,
-                                  kv_cache_stride_bytes, aligned_max_context_len, block_table_stride, num_sms, split_kv);
+                                  kv_cache_stride_bytes, aligned_max_context_len, block_table_stride, num_sms, num_math_warp_groups);
     } else {
         DG_HOST_UNREACHABLE("Unsupported architecture");
     }
@@ -258,7 +258,6 @@ static torch::Tensor fp8_paged_mqa_logits(const torch::Tensor& q,
     }
     return logits;
 }
-
 #endif
 
 static void register_apis(pybind11::module_& m) {
