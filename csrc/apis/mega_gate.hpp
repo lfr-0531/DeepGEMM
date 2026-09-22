@@ -1,12 +1,14 @@
 #pragma once
 
 #include <cmath>
+#include <map>
 #include <optional>
 #include <string>
 #include <tuple>
 #include <unordered_map>
 
 #include <c10/cuda/CUDAGraphsC10Utils.h>
+#include <pybind11/stl.h>
 #include <torch/python.h>
 
 #include "../runtime/runtime.hpp"
@@ -191,7 +193,7 @@ bf16_mega_gate(const torch::Tensor& x,
     return {topk_idx, topk_weights};
 }
 
-static pybind11::dict get_bf16_mega_gate_config(const int& num_tokens, const int& hidden,
+static std::map<std::string, int> get_bf16_mega_gate_config(const int& num_tokens, const int& hidden,
                                                 const int& num_routed_experts, const int& num_topk) {
     DG_HOST_ASSERT(num_tokens > 0 and num_tokens <= static_cast<int>(layout::mega_gate::kNumMaxTokens));
     DG_HOST_ASSERT(hidden > 0 and hidden % 256 == 0);
@@ -200,7 +202,8 @@ static pybind11::dict get_bf16_mega_gate_config(const int& num_tokens, const int
     const auto num_device_sms = runtime->get_num_sms();
     const auto config = get_sm100_bf16_mega_gate_config(num_tokens, hidden, num_routed_experts,
                                                         num_device_sms, true, true, true);
-    pybind11::dict result;
+    // A typed map keeps generated Python stubs precise (`dict[str, int]`)
+    std::map<std::string, int> result;
     result["block_tokens"] = config.block_tokens;
     result["num_mma_ctas"] = config.num_mma_ctas;
     result["num_split_k"] = config.num_split_k;
