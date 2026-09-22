@@ -257,11 +257,25 @@ static const torch::Tensor& get_sparse_mqa_logits_workspace(const torch::TensorO
     const auto stream = at::cuda::getCurrentCUDAStream();
     DG_HOST_ASSERT(options.device() == stream.device());
     static std::unordered_map<c10::cuda::CUDAStream, torch::Tensor> workspaces;
+    // The first stream warmed up on each device; graph capture falls back to it (see below).
+    static std::unordered_map<c10::DeviceIndex, torch::Tensor> primary_workspaces;
     auto& workspace = workspaces[stream];
     if (not workspace.defined()) {
         // Warm up each stream before capture so one-time zeroing is not replayed with the graph.
-        DG_HOST_ASSERT(c10::cuda::currentStreamCaptureStatusMayInitCtx() == c10::cuda::CaptureStatus::None);
+        if (c10::cuda::currentStreamCaptureStatusMayInitCtx() != c10::cuda::CaptureStatus::None) {
+            // Frameworks capture on a dedicated side stream but replay on the stream that
+            // launched the eager warm-up, so reuse that stream's workspace instead of
+            // recording a fresh allocation and its zeroing into the graph. The workspace is
+            // per-launch scratch: this assumes the replays are serialized with the eager
+            // launches of the warmed stream (one warmed stream per device), which holds for
+            // frameworks that warm up and replay on their main stream.
+            const auto iterator = primary_workspaces.find(stream.device_index());
+            if (iterator == primary_workspaces.end())
+                DG_HOST_UNREACHABLE("Warm up the sparse MQA logits workspace on this device before capturing");
+            return iterator->second;
+        }
         workspace = torch::zeros({kNumWorkspaceBytes}, options.dtype(torch::kByte));
+        primary_workspaces.try_emplace(stream.device_index(), workspace);
     }
     return workspace;
 }
